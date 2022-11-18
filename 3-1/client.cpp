@@ -15,13 +15,13 @@ using namespace std;
 */
 
 
-const int MAXSIZE = 1024;//传输缓冲区最大长度
-u_short SYN_1_ACK_0 = 0x4; //SYN = 1 ACK = 0
-u_short SYN_1_ACK_1 = 0x5;//SYN = 0, ACK = 1
-u_short SYN_0_ACK_1 = 0x1;
-u_short FIN_1_ACK_1 = 0x3;//SYN = 1, ACK = 1
-u_short FIN_1_ACK_0 = 0x2;//FIN = 1 ACK = 0
-u_short END = 0x7;//结束标志，SYN=1,FIN=1,ACK=1
+const int MAXSIZE = 2048;//传输缓冲区最大长度
+const u_short SYN_1_ACK_0 = 0x4; //SYN = 1 ACK = 0
+const u_short SYN_1_ACK_1 = 0x5;//SYN = 0, ACK = 1
+const u_short SYN_0_ACK_1 = 0x1;
+const u_short FIN_1_ACK_1 = 0x3;//SYN = 1, ACK = 1
+const u_short FIN_1_ACK_0 = 0x2;//FIN = 1 ACK = 0
+const u_short END = 0x7;//结束标志，SYN=1,FIN=1,ACK=1
 double MAX_WAIT_TIME = 0.5* CLOCKS_PER_SEC;
 void printsplit() {
     cout << "--------------------------------------------------------------------------" << endl;
@@ -29,12 +29,12 @@ void printsplit() {
 u_short cksum(u_short* mes, int size) {
     int count = (size + 1) / 2;
     u_short* buf = (u_short*)malloc(size + 1);
-    memset(buf, 0, size + 1);
+    memset(buf, 0, size + 1); //fill with 0
     memcpy(buf, mes, size);
     u_long sum = 0;
     while (count--) {
         sum += *buf++;
-        if (sum & 0xffff0000) {
+        if (sum & 0xffff0000) { 
             sum &= 0xffff;
             sum++;
         }
@@ -43,10 +43,10 @@ u_short cksum(u_short* mes, int size) {
 }
 
 struct HEADER{
-    u_short sum = 0;//校验和 16位
     u_short datasize = 0;//所包含数据长度 16位
-    u_short flag = 0;
-    u_short SEQ = 0;
+    u_short sum = 0;//校验和 16位
+    u_short flag = 0;//标志位 16位
+    u_short SEQ = 0; //序列号 16位
     HEADER() {
         sum = 0;
         datasize = 0;
@@ -55,7 +55,7 @@ struct HEADER{
     }
 };
 
-bool Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){//三次握手建立连接
+bool Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){//两次握手建立连接
   
     HEADER header;
     char* buff = new char[sizeof(header)];
@@ -70,7 +70,7 @@ bool Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){//�
     }
     clock_t start = clock();
     u_long mode = 1;
-    ioctlsocket(socketClient, FIONBIO, &mode);
+    ioctlsocket(socketClient, FIONBIO, &mode);//防止线程阻塞
 
     //接收第二次握手
     while (recvfrom(socketClient, buff, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0){
@@ -106,17 +106,17 @@ bool Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){//�
 void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, char* msg, int lenlen)
 {
 
-    int packagenum = lenlen / MAXSIZE + (lenlen % MAXSIZE != 0);
+    int packagenum = lenlen / MAXSIZE + (lenlen % MAXSIZE != 0); //切分数据包，2048B一个数据包
     int seq = 0;
     for (int i = 0; i < packagenum; i++){
         char* message = msg + i * MAXSIZE;
-        int len = (i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE);
+        int len = (i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE); //长度是2048还是最后一个包的余数
         HEADER header;
         char* buff = new char[MAXSIZE + sizeof(header)];
         header.datasize = len;
         header.SEQ = u_short(seq);//序列号
-        memcpy(buff, &header, sizeof(header));
-        memcpy(buff + sizeof(header), message, sizeof(header) + len);
+        memcpy(buff, &header, sizeof(header)); //首部放进缓冲区
+        memcpy(buff + sizeof(header), message, sizeof(header) + len);//数据放进缓冲区
         header.sum = cksum((u_short*)buff, sizeof(header) + len);//计算校验和
         memcpy(buff, &header, sizeof(header));
         sendto(socketClient, buff, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//发送
@@ -124,15 +124,11 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
         cout << "Send message " << len << " B!" << " flag:" << int(header.flag) << " SEQ:" << int(header.SEQ) << " SUM:" << int(header.sum) << endl;
         clock_t start = clock();
         //接收ack等信息
-        while (1 == 1)
-        {
+        while (1){
             u_long mode = 1;
             ioctlsocket(socketClient, FIONBIO, &mode);
-            while (recvfrom(socketClient, buff, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
-            {
-                
-                if (clock()-start > MAX_WAIT_TIME)
-                {
+            while (recvfrom(socketClient, buff, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0){               
+                if (clock()-start > MAX_WAIT_TIME){
                     header.datasize = len;
                     header.SEQ = u_char(seq);//序列号
                     header.flag = u_char(0x0);
@@ -204,7 +200,7 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
         }
     }
     u_long mode = 0;
-    ioctlsocket(socketClient, FIONBIO, &mode);
+    ioctlsocket(socketClient, FIONBIO, &mode);//改回阻塞模式
 }
 
 
@@ -216,7 +212,7 @@ bool Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){
 
     u_short sum;
 
-    //进行第一次握手
+    //进行第一次挥手
     header.flag = FIN_1_ACK_0;
     header.sum = 0;//校验和置0
     header.sum = cksum((u_short*)&header, sizeof(header));
@@ -259,8 +255,7 @@ bool Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){
 }
 
 
-int main()
-{
+int main(){
     WSADATA wsadata;
     WSAStartup(MAKEWORD(2, 2), &wsadata);
 
@@ -310,7 +305,7 @@ int main()
         string myfile = files[x - 1];
         cout << "starting：" << files[x - 1] << endl;
         ifstream fin(myfile.c_str(), ifstream::binary);//以二进制方式打开文件
-        char* buffer = new char[10000000];
+        char* buffer = new char[100000000];
         int i = 0;
         u_short temp = fin.get();
         while (fin)
