@@ -41,7 +41,6 @@ struct HEADER
     u_short sum = 0;
     u_short datasize = 0;
     u_short flag = 0;
-
     u_short SEQ = 0;
 
     HEADER() {
@@ -53,22 +52,19 @@ struct HEADER
     }
 };
 
-int Connect(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen)
+bool Connect(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen)
 {
 
     HEADER header;
     char* Buffer = new char[sizeof(header)];
 
     //接收第一次握手信息
-    while (1)
-    {
-        if (recvfrom(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, &ClientAddrLen) == -1)
-        {
-            return -1;
+    while (1){
+        if (recvfrom(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, &ClientAddrLen) == -1){
+            return false;
         }
         memcpy(&header, Buffer, sizeof(header));
-        if (header.flag == SYN_1_ACK_0 && cksum((u_short*)&header, sizeof(header)) == 0)
-        {
+        if (header.flag == SYN_1_ACK_0 && cksum((u_short*)&header, sizeof(header)) == 0){
             cout << "first hello----check" << endl;
             break;
         }
@@ -79,60 +75,52 @@ int Connect(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen)
     header.sum = 0;
     header.sum = cksum((u_short*)&header, sizeof(header));
     memcpy(Buffer, &header, sizeof(header));
-    if (sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen) == -1)
-    {
-        return -1;
+    if (sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen) == -1){
+        return false;
     }
     
     
 
     HEADER h;
     memcpy(&h, Buffer, sizeof(header));
-    if (h.flag == SYN_1_ACK_1 && cksum((u_short*)&h, sizeof(h) == 0))
-    {
+    if (h.flag == SYN_1_ACK_1 && cksum((u_short*)&h, sizeof(h) == 0)){
         cout << "connection succeeded" << endl;
     }
-    else
-    {
+    else{
         cout << "error" << endl;
-        return -1;
+        return false;
     }
-    return 1;
+    return true;
 }
 
-int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, char* message)
-{
+int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, char* message){
     long int total_len = 0;//file length
     HEADER header;
-    char* Buffer = new char[MAXSIZE + sizeof(header)];
+    char* buff = new char[MAXSIZE + sizeof(header)];
     int seq = 0;
     int index = 0;
 
-    while (1 == 1)
-    {
-        int length = recvfrom(sockServ, Buffer, sizeof(header) + MAXSIZE, 0, (sockaddr*)&ClientAddr, &ClientAddrLen);//接收报文长度
+    while (1){
+        int length = recvfrom(sockServ, buff, sizeof(header) + MAXSIZE, 0, (sockaddr*)&ClientAddr, &ClientAddrLen);//接收报文长度
         //cout << length << endl;
-        memcpy(&header, Buffer, sizeof(header));
+        memcpy(&header, buff, sizeof(header));
         //to see if is done
-        if (header.flag == END && cksum((u_short*)&header, sizeof(header)) == 0)
-        {
+        if (header.flag == END && cksum((u_short*)&header, sizeof(header)) == 0){
             cout << "done" << endl;
             break;
         }
-        if (header.flag == u_short(0) && cksum((u_short*)Buffer, length - sizeof(header)))
-        {
+        if (header.flag == u_short(0) && cksum((u_short*)buff, length - sizeof(header))){
             //to see if other data is recieved
-            if (seq != int(header.SEQ))
-            {
+            if (seq != int(header.SEQ)){
                 //problems occurred. send back ACK
                 header.flag = SYN_0_ACK_1;
                 header.datasize = 0;
                 header.SEQ = (u_short)seq;
                 header.sum = 0;
                 header.sum = cksum((u_short*)&header, sizeof(header));
-                memcpy(Buffer, &header, sizeof(header));
+                memcpy(buff, &header, sizeof(header));
                 
-                sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
+                sendto(sockServ, buff, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
                 printsplit();
                 cout << "Send to Client ACK:" << (int)header.flag << " SEQ:" << (int)header.SEQ << endl;
                 continue;//dump the data
@@ -142,7 +130,7 @@ int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, c
             printsplit();
             cout << "Send message " << length - sizeof(header) << " B!Flag:" << int(header.flag) << " SEQ : " << int(header.SEQ) << " SUM:" << int(header.sum) << endl;
             char* temp = new char[length - sizeof(header)];
-            memcpy(temp, Buffer + sizeof(header), length - sizeof(header));
+            memcpy(temp, buff + sizeof(header), length - sizeof(header));
 
             memcpy(message + total_len, temp, length - sizeof(header));
             total_len = total_len + int(header.datasize);
@@ -153,9 +141,9 @@ int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, c
             header.SEQ = (u_short)seq;
             header.sum = 0;
             header.sum = cksum((u_short*)&header, sizeof(header));
-            memcpy(Buffer, &header, sizeof(header));
+            memcpy(buff, &header, sizeof(header));
             //resend ACK
-            sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
+            sendto(sockServ, buff, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
             printsplit();
             cout << "Send to Client ACK:" << (int)header.flag << " SEQ:" << (int)header.SEQ << endl;
             seq++;
@@ -166,20 +154,17 @@ int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, c
     header.flag = END;
     header.sum = 0;
     header.sum = cksum((u_short*)&header, sizeof(header));
-    memcpy(Buffer, &header, sizeof(header));
-    if (sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen) == -1)
-    {
+    memcpy(buff, &header, sizeof(header));
+    if (sendto(sockServ, buff, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen) == -1){
         return -1;
     }
     return total_len;
 }
 
-int disConnect(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen)
-{
+bool disConnect(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen){
     HEADER header;
     char* Buffer = new char[sizeof(header)];
-    while (1 == 1)
-    {
+    while (1 == 1){
         int length = recvfrom(sockServ, Buffer, sizeof(header) + MAXSIZE, 0, (sockaddr*)&ClientAddr, &ClientAddrLen);//接收报文长度
         memcpy(&header, Buffer, sizeof(header));
         if (header.flag == FIN_1_ACK_0 && cksum((u_short*)&header, sizeof(header)) == 0)
@@ -193,17 +178,15 @@ int disConnect(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen)
     header.sum = 0;
     header.sum = cksum((u_short*)&header, sizeof(header));
     memcpy(Buffer, &header, sizeof(header));
-    if (sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen) == -1)
-    {
-        return -1;
+    if (sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen) == -1){
+        return false;
     }
     
-    return 1;
+    return true;
 }
 
 
-int main()
-{
+int main(){
     WSADATA wsadata;
     WSAStartup(MAKEWORD(2, 2), &wsadata);
 
