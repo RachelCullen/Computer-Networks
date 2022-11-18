@@ -9,31 +9,30 @@
 #include <io.h>
 #pragma comment(lib, "ws2_32.lib")
 using namespace std;
-/*/*±êÖ¾Î»Îª£º |  2  |  1  |  0  |
+/*/*æ ‡å¿—ä½ä¸ºï¼š |  2  |  1  |  0  |
 *          ---------------------
 *             | SYN | FIN | ACK |
 */
 
 
-const int MAXSIZE = 1024;//´«Êä»º³åÇø×î´ó³¤¶È
-const unsigned char SYN_1_ACK_0 = 0x4; //SYN = 1 ACK = 0
-const unsigned char SYN_1_ACK_1 = 0x5;//SYN = 0, ACK = 1
-const unsigned char SYN_0_ACK_1 = 0x1;
-const unsigned char FIN_1_ACK_1 = 0x3;//SYN = 1, ACK = 1
-const unsigned char FIN_1_ACK_0 = 0x2;//FIN = 1 ACK = 0
-const unsigned char END = 0x7;//½áÊø±êÖ¾£¬SYN=1,FIN=1,ACK=1
-double MAX_WAIT_TIME = 0.5 * CLOCKS_PER_SEC;
-long long head, tail, freq;
+const int MAXSIZE = 1024;//ä¼ è¾“ç¼“å†²åŒºæœ€å¤§é•¿åº¦
+u_short SYN_1_ACK_0 = 0x4; //SYN = 1 ACK = 0
+u_short SYN_1_ACK_1 = 0x5;//SYN = 0, ACK = 1
+u_short SYN_0_ACK_1 = 0x1;
+u_short FIN_1_ACK_1 = 0x3;//SYN = 1, ACK = 1
+u_short FIN_1_ACK_0 = 0x2;//FIN = 1 ACK = 0
+u_short END = 0x7;//ç»“æŸæ ‡å¿—ï¼ŒSYN=1,FIN=1,ACK=1
+double MAX_WAIT_TIME = 0.25 * CLOCKS_PER_SEC;
 void printsplit() {
     cout << "--------------------------------------------------------------------------" << endl;
 }
 
 /*
-1.°ÑÎ±Ê×²¿Ìí¼Óµ½UDPÉÏ£»
-2.¼ÆËã³õÊ¼Ê±ÊÇĞèÒª½«¼ìÑéºÍ×Ö¶ÎÌíÁãµÄ£»
-3.°ÑËùÓĞÎ»»®·ÖÎª16Î»£¨2×Ö½Ú£©µÄ×Ö
-4.°ÑËùÓĞ16Î»µÄ×ÖÏà¼Ó£¬Èç¹ûÓöµ½½øÎ»£¬Ôò½«¸ßÓÚ16×Ö½ÚµÄ½øÎ»²¿·ÖµÄÖµ¼Óµ½×îµÍÎ»ÉÏ£¬¾ÙÀı£¬0xBB5E+0xFCED=0x1 B84B£¬Ôò½«1·Åµ½×îµÍÎ»£¬µÃµ½½á¹ûÊÇ0xB84C
-5.½«ËùÓĞ×ÖÏà¼ÓµÃµ½µÄ½á¹ûÓ¦¸ÃÎªÒ»¸ö16Î»µÄÊı£¬½«¸ÃÊıÈ¡·´Ôò¿ÉÒÔµÃµ½¼ìÑéºÍchecksum¡£ */
+1.æŠŠä¼ªé¦–éƒ¨æ·»åŠ åˆ°UDPä¸Šï¼›
+2.è®¡ç®—åˆå§‹æ—¶æ˜¯éœ€è¦å°†æ£€éªŒå’Œå­—æ®µæ·»é›¶çš„ï¼›
+3.æŠŠæ‰€æœ‰ä½åˆ’åˆ†ä¸º16ä½ï¼ˆ2å­—èŠ‚ï¼‰çš„å­—
+4.æŠŠæ‰€æœ‰16ä½çš„å­—ç›¸åŠ ï¼Œå¦‚æœé‡åˆ°è¿›ä½ï¼Œåˆ™å°†é«˜äº16å­—èŠ‚çš„è¿›ä½éƒ¨åˆ†çš„å€¼åŠ åˆ°æœ€ä½ä½ä¸Šï¼Œä¸¾ä¾‹ï¼Œ0xBB5E+0xFCED=0x1 B84Bï¼Œåˆ™å°†1æ”¾åˆ°æœ€ä½ä½ï¼Œå¾—åˆ°ç»“æœæ˜¯0xB84C
+5.å°†æ‰€æœ‰å­—ç›¸åŠ å¾—åˆ°çš„ç»“æœåº”è¯¥ä¸ºä¸€ä¸ª16ä½çš„æ•°ï¼Œå°†è¯¥æ•°å–ååˆ™å¯ä»¥å¾—åˆ°æ£€éªŒå’Œchecksumã€‚ */
 u_short cksum(u_short* mes, int size) {
     int count = (size + 1) / 2;
     u_short* buf = (u_short*)malloc(size + 1);
@@ -52,61 +51,59 @@ u_short cksum(u_short* mes, int size) {
 
 struct HEADER
 {
-    u_short sum = 0;//Ğ£ÑéºÍ 16Î»
-    u_short datasize = 0;//Ëù°üº¬Êı¾İ³¤¶È 16Î»
-    unsigned char flag = 0;
-    //°ËÎ»£¬Ê¹ÓÃºóËÄÎ»£¬ÅÅÁĞÊÇFIN ACK SYN 
-    unsigned char SEQ = 0;
-    //°ËÎ»£¬´«ÊäµÄĞòÁĞºÅ£¬0~255£¬³¬¹ıºómod
+    u_short sum = 0;//æ ¡éªŒå’Œ 16ä½
+    u_short datasize = 0;//æ‰€åŒ…å«æ•°æ®é•¿åº¦ 16ä½
+    u_short flag = 0;
+    //å…«ä½ï¼Œä½¿ç”¨åå››ä½ï¼Œæ’åˆ—æ˜¯FIN ACK SYN 
+    u_short SEQ = 0;
+    //å…«ä½ï¼Œä¼ è¾“çš„åºåˆ—å·ï¼Œ0~255ï¼Œè¶…è¿‡åmod
     HEADER() {
-        sum = 0;//Ğ£ÑéºÍ 16Î»
-        datasize = 0;//Ëù°üº¬Êı¾İ³¤¶È 16Î»
+        sum = 0;//æ ¡éªŒå’Œ 16ä½
+        datasize = 0;//æ‰€åŒ…å«æ•°æ®é•¿åº¦ 16ä½
         flag = 0;
-        //°ËÎ»£¬Ê¹ÓÃºóÈıÎ»£¬ÅÅÁĞÊÇFIN ACK SYN 
+        //å…«ä½ï¼Œä½¿ç”¨åä¸‰ä½ï¼Œæ’åˆ—æ˜¯FIN ACK SYN 
         SEQ = 0;
     }
 };
 
-int Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)//Èı´ÎÎÕÊÖ½¨Á¢Á¬½Ó
+int Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)//ä¸‰æ¬¡æ¡æ‰‹å»ºç«‹è¿æ¥
 {
-    QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
+  
     HEADER header;
     char* Buffer = new char[sizeof(header)];
 
     u_short sum;
 
-    //½øĞĞµÚÒ»´ÎÎÕÊÖ
+    //è¿›è¡Œç¬¬ä¸€æ¬¡æ¡æ‰‹
     header.flag = SYN_1_ACK_0;
-    header.sum = 0;//Ğ£ÑéºÍÖÃ0
-    u_short temp = cksum((u_short*)&header, sizeof(header));
-    header.sum = temp;//¼ÆËãĞ£ÑéºÍ
-    memcpy(Buffer, &header, sizeof(header));//½«Ê×²¿·ÅÈë»º³åÇø
+    header.sum = 0;//æ ¡éªŒå’Œç½®0
+    header.sum = cksum((u_short*)&header, sizeof(header));
+    memcpy(Buffer, &header, sizeof(header));//å°†é¦–éƒ¨æ”¾å…¥ç¼“å†²åŒº
     if (sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen) == -1)
     {
         return -1;
     }
-    QueryPerformanceCounter((LARGE_INTEGER*)&head);
-    u_long mode = 1;
-    ioctlsocket(socketClient, FIONBIO, &mode);
+    clock_t start = clock();
+   
 
-    //½ÓÊÕµÚ¶ş´ÎÎÕÊÖ
+    //æ¥æ”¶ç¬¬äºŒæ¬¡æ¡æ‰‹
     while (recvfrom(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
     {
-        QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-        if ((tail-head)/freq > MAX_WAIT_TIME)//³¬Ê±£¬ÖØĞÂ´«ÊäµÚÒ»´ÎÎÕÊÖ
+        
+        if (clock()-start > MAX_WAIT_TIME)//è¶…æ—¶ï¼Œé‡æ–°ä¼ è¾“ç¬¬ä¸€æ¬¡æ¡æ‰‹
         {
             header.flag = SYN_1_ACK_0;
-            header.sum = 0;//Ğ£ÑéºÍÖÃ0
-            header.sum = cksum((u_short*)&header, sizeof(header));//¼ÆËãĞ£ÑéºÍ
-            memcpy(Buffer, &header, sizeof(header));//½«Ê×²¿·ÅÈë»º³åÇø
+            header.sum = 0;//æ ¡éªŒå’Œç½®0
+            header.sum = cksum((u_short*)&header, sizeof(header));//è®¡ç®—æ ¡éªŒå’Œ
+            memcpy(Buffer, &header, sizeof(header));//å°†é¦–éƒ¨æ”¾å…¥ç¼“å†²åŒº
             sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
-            QueryPerformanceCounter((LARGE_INTEGER*)&head);
+            clock_t start = clock();
             cout << "time out for first hello. resending....." << endl;
         }
     }
 
 
-    //½øĞĞĞ£ÑéºÍ¼ìÑé
+    //è¿›è¡Œæ ¡éªŒå’Œæ£€éªŒ
     memcpy(&header, Buffer, sizeof(header));
     if (header.flag == SYN_1_ACK_1 && cksum((u_short*)&header, sizeof(header) == 0))
     {
@@ -126,54 +123,54 @@ int Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)//Èı´Î
 
 void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, char* msg, int lenlen)
 {
-    QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
+
     int packagenum = lenlen / MAXSIZE + (lenlen % MAXSIZE != 0);
-    int seqnum = 0;
+    int seq = 0;
     for (int i = 0; i < packagenum; i++)
     {
-       // send_package(socketClient, servAddr, servAddrlen, msg + i * MAXSIZE, i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE, seqnum);
+       // send_package(socketClient, servAddr, servAddrlen, msg + i * MAXSIZE, i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE, seq);
         char* message = msg + i * MAXSIZE;
         int len = (i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE);
-        int order = seqnum;
+        int order = seq;
         HEADER header;
         char* buffer = new char[MAXSIZE + sizeof(header)];
         header.datasize = len;
-        header.SEQ = unsigned char(order);//ĞòÁĞºÅ
+        header.SEQ = u_short(order);//åºåˆ—å·
         memcpy(buffer, &header, sizeof(header));
         memcpy(buffer + sizeof(header), message, sizeof(header) + len);
-        u_short check = cksum((u_short*)buffer, sizeof(header) + len);//¼ÆËãĞ£ÑéºÍ
-        header.sum = check;
+        header.sum = cksum((u_short*)buffer, sizeof(header) + len);//è®¡ç®—æ ¡éªŒå’Œ
         memcpy(buffer, &header, sizeof(header));
-        sendto(socketClient, buffer, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//·¢ËÍ
+        sendto(socketClient, buffer, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//å‘é€
+        printsplit();
         cout << "Send message " << len << " B!" << " flag:" << int(header.flag) << " SEQ:" << int(header.SEQ) << " SUM:" << int(header.sum) << endl;
-        QueryPerformanceCounter((LARGE_INTEGER*)&head);
-        //½ÓÊÕackµÈĞÅÏ¢
+        clock_t start = clock();
+        //æ¥æ”¶ackç­‰ä¿¡æ¯
         while (1 == 1)
         {
-            u_long mode = 1;
-            ioctlsocket(socketClient, FIONBIO, &mode);
+            
             while (recvfrom(socketClient, buffer, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
             {
-                QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-                if ((tail-head)/freq > MAX_WAIT_TIME)
+                
+                if (clock()-start > MAX_WAIT_TIME)
                 {
                     header.datasize = len;
-                    header.SEQ = u_char(order);//ĞòÁĞºÅ
+                    header.SEQ = u_char(order);//åºåˆ—å·
                     header.flag = u_char(0x0);
                     memcpy(buffer, &header, sizeof(header));
                     memcpy(buffer + sizeof(header), message, sizeof(header) + len);
-                    u_short check = cksum((u_short*)buffer, sizeof(header) + len);//¼ÆËãĞ£ÑéºÍ
-                    header.sum = check;
+                    header.sum = cksum((u_short*)buffer, sizeof(header) + len);//è®¡ç®—æ ¡éªŒå’Œ
                     memcpy(buffer, &header, sizeof(header));
-                    sendto(socketClient, buffer, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//·¢ËÍ
+                    sendto(socketClient, buffer, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//å‘é€
+                    printsplit();
                     cout << "TIME OUT! ReSend message " << len << " bytes! Flag:" << int(header.flag) << " SEQ:" << int(header.SEQ) << endl;
-                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
+                    clock_t start = clock();
                 }
             }
-            memcpy(&header, buffer, sizeof(header));//»º³åÇø½ÓÊÕµ½ĞÅÏ¢£¬¶ÁÈ¡
+            memcpy(&header, buffer, sizeof(header));//ç¼“å†²åŒºæ¥æ”¶åˆ°ä¿¡æ¯ï¼Œè¯»å–
             u_short check = cksum((u_short*)&header, sizeof(header));
             if (header.SEQ == u_short(order) && header.flag == SYN_0_ACK_1)
             {
+                printsplit();
                 cout << "Send has been confirmed! Flag:" << int(header.flag) << " SEQ:" << int(header.SEQ) << endl;
                 break;
             }
@@ -182,50 +179,44 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
                 continue;
             }
         }
-        u_long mode = 0;
-        ioctlsocket(socketClient, FIONBIO, &mode);//¸Ä»Ø×èÈûÄ£Ê½
-        seqnum++;
-        if (seqnum > 255)
-        {
-            seqnum = seqnum - 256;
-        }
+       
+        seq++;
+        
     }
-    //·¢ËÍ½áÊøĞÅÏ¢
+    //å‘é€ç»“æŸä¿¡æ¯
     HEADER header;
     char* Buffer = new char[sizeof(header)];
     header.flag = END;
     header.sum = 0;
-    u_short temp = cksum((u_short*)&header, sizeof(header));
-    header.sum = temp;
+    header.sum = cksum((u_short*)&header, sizeof(header));
     memcpy(Buffer, &header, sizeof(header));
     sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
     cout << "Send End!" << endl;
-    QueryPerformanceCounter((LARGE_INTEGER*)&head);
+    clock_t start = clock();
     while (1 == 1)
     {
-        u_long mode = 1;
-        ioctlsocket(socketClient, FIONBIO, &mode);
+       
         while (recvfrom(socketClient, Buffer, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
         {
-            QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-            if ((tail-head)/freq > MAX_WAIT_TIME)
+           
+            if (clock()-start > MAX_WAIT_TIME)
             {
                 char* Buffer = new char[sizeof(header)];
                 header.flag = END;
                 header.sum = 0;
-                u_short temp = cksum((u_short*)&header, sizeof(header));
-                header.sum = temp;
+                header.sum = cksum((u_short*)&header, sizeof(header));
                 memcpy(Buffer, &header, sizeof(header));
                 sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
+                printsplit();
                 cout << "Time Out! ReSend End!" << endl;
-                QueryPerformanceCounter((LARGE_INTEGER*)&head);
+                clock_t start = clock();
             }
         }
-        memcpy(&header, Buffer, sizeof(header));//»º³åÇø½ÓÊÕµ½ĞÅÏ¢£¬¶ÁÈ¡
+        memcpy(&header, Buffer, sizeof(header));//ç¼“å†²åŒºæ¥æ”¶åˆ°ä¿¡æ¯ï¼Œè¯»å–
         u_short check = cksum((u_short*)&header, sizeof(header));
         if (header.flag == END)
         {
-            cout << "¶Ô·½ÒÑ³É¹¦½ÓÊÕÎÄ¼ş!" << endl;
+            cout << "server has received the file!" << endl;
             break;
         }
         else
@@ -233,52 +224,49 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
             continue;
         }
     }
-    u_long mode = 0;
-    ioctlsocket(socketClient, FIONBIO, &mode);//¸Ä»Ø×èÈûÄ£Ê½
+
 }
 
 
 
 int Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)
 {
-    QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
+ 
     HEADER header;
     char* Buffer = new char[sizeof(header)];
 
     u_short sum;
 
-    //½øĞĞµÚÒ»´ÎÎÕÊÖ
+    //è¿›è¡Œç¬¬ä¸€æ¬¡æ¡æ‰‹
     header.flag = FIN_1_ACK_0;
-    header.sum = 0;//Ğ£ÑéºÍÖÃ0
-    u_short temp = cksum((u_short*)&header, sizeof(header));
-    header.sum = temp;//¼ÆËãĞ£ÑéºÍ
-    memcpy(Buffer, &header, sizeof(header));//½«Ê×²¿·ÅÈë»º³åÇø
+    header.sum = 0;//æ ¡éªŒå’Œç½®0
+    header.sum = cksum((u_short*)&header, sizeof(header));
+    memcpy(Buffer, &header, sizeof(header));//å°†é¦–éƒ¨æ”¾å…¥ç¼“å†²åŒº
     if (sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen) == -1)
     {
         return -1;
     }
-    QueryPerformanceCounter((LARGE_INTEGER*)&head);
-    u_long mode = 1;
-    ioctlsocket(socketClient, FIONBIO, &mode);
+    clock_t start = clock();
+ 
 
-    //½ÓÊÕµÚ¶ş´Î»ÓÊÖ
+    //æ¥æ”¶ç¬¬äºŒæ¬¡æŒ¥æ‰‹
     while (recvfrom(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
     {
-        QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-        if ((tail-head)/freq > MAX_WAIT_TIME)//³¬Ê±£¬ÖØĞÂ´«ÊäµÚÒ»´Î»ÓÊÖ
+
+        if (clock()-start > MAX_WAIT_TIME)//è¶…æ—¶ï¼Œé‡æ–°ä¼ è¾“ç¬¬ä¸€æ¬¡æŒ¥æ‰‹
         {
             header.flag = FIN_1_ACK_1;
-            header.sum = 0;//Ğ£ÑéºÍÖÃ0
-            header.sum = cksum((u_short*)&header, sizeof(header));//¼ÆËãĞ£ÑéºÍ
-            memcpy(Buffer, &header, sizeof(header));//½«Ê×²¿·ÅÈë»º³åÇø
+            header.sum = 0;//æ ¡éªŒå’Œç½®0
+            header.sum = cksum((u_short*)&header, sizeof(header));//è®¡ç®—æ ¡éªŒå’Œ
+            memcpy(Buffer, &header, sizeof(header));//å°†é¦–éƒ¨æ”¾å…¥ç¼“å†²åŒº
             sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
-            QueryPerformanceCounter((LARGE_INTEGER*)&head);
+            clock_t start = clock();
             cout << "time out for first goodbye. resending....." << endl;
         }
     }
 
 
-    //½øĞĞĞ£ÑéºÍ¼ìÑé
+    //è¿›è¡Œæ ¡éªŒå’Œæ£€éªŒ
     memcpy(&header, Buffer, sizeof(header));
     if (header.flag == FIN_1_ACK_1 && cksum((u_short*)&header, sizeof(header) == 0))
     {
@@ -303,23 +291,23 @@ int main()
     SOCKADDR_IN server_addr;
     SOCKET server;
 
-    server_addr.sin_family = AF_INET;//Ê¹ÓÃIPV4
-    server_addr.sin_port = htons(2456);
-    server_addr.sin_addr.s_addr = htonl(2130706433);
+    server_addr.sin_family = AF_INET;//ä½¿ç”¨IPV4
+    server_addr.sin_port = htons(8000);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     server = socket(AF_INET, SOCK_DGRAM, 0);
     int len = sizeof(server_addr);
-    //½¨Á¢Á¬½Ó
+    //å»ºç«‹è¿æ¥
     if (!Connect(server, server_addr, len) )
     {
         return 0;
     }
     vector<string> fileNames;
-    string path("D:\\111programs\\¼ÆÍølab3-1_client"); 	//×Ô¼ºÑ¡ÔñÄ¿Â¼²âÊÔ
+    string path("D:\\111programs\\è®¡ç½‘lab3-1_client"); 	//è‡ªå·±é€‰æ‹©ç›®å½•æµ‹è¯•
     
     vector<string> files;
-    intptr_t hFile = 0;//ÎÄ¼ş¾ä±ú    
-    struct _finddata_t fileinfo;//ÎÄ¼şĞÅÏ¢
+    intptr_t hFile = 0;//æ–‡ä»¶å¥æŸ„    
+    struct _finddata_t fileinfo;//æ–‡ä»¶ä¿¡æ¯
     string p1,p2;
     if ((hFile = _findfirst(p1.assign(path).append("\\*").c_str(), &fileinfo)) != -1)
     {
@@ -333,7 +321,7 @@ int main()
     }
     int k = 1;
     printsplit();
-    cout << "files list£º" << endl;
+    cout << "files listï¼š" << endl;
     for (auto f : files) {
         cout << k << ". ";
         cout << f << endl;
@@ -344,24 +332,29 @@ int main()
     cin >> x;
     if (x) {
         string myfile = files[x - 1];
-        cout << "starting£º" << files[x - 1] << endl;
-        ifstream fin(myfile.c_str(), ifstream::binary);//ÒÔ¶ş½øÖÆ·½Ê½´ò¿ªÎÄ¼ş
+        cout << "startingï¼š" << files[x - 1] << endl;
+        ifstream fin(myfile.c_str(), ifstream::binary);//ä»¥äºŒè¿›åˆ¶æ–¹å¼æ‰“å¼€æ–‡ä»¶
         char* buffer = new char[10000000];
         int i = 0;
-        unsigned char temp = fin.get();
+        u_short temp = fin.get();
         while (fin)
         {
             buffer[i++] = temp;
             temp = fin.get();
         }
         fin.close();
+        long long head, tail, freq;
         sendMessage(server, server_addr, len, (char*)(myfile.c_str()), myfile.length());
         QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
         QueryPerformanceCounter((LARGE_INTEGER*)&head);
         sendMessage(server, server_addr, len, buffer, i);
         QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-        cout << "´«Êä×ÜÊ±¼äÎª: " << (tail - head) * 1000.0 / freq << " ms" << endl;
-        cout << "ÍÌÍÂÂÊÎª: " << ((double)i) / ((tail - head) * 1000.0 / freq) << " byte/ms" << endl;
+        cout << "ä¼ è¾“æ€»æ—¶é—´ä¸º: " << (tail - head) * 1000.0 / freq << " ms" << endl;
+       /* clock_t start = clock();
+        sendMessage(server, server_addr, len, buffer, i);
+        clock_t end = clock();
+        cout << "ä¼ è¾“æ€»æ—¶é—´ä¸º:" << (end - start) / CLOCKS_PER_SEC << "s" << endl;*/
+        cout << "ååç‡ä¸º: " << ((double)i) / ((tail - head) * 1000.0 / freq) << " byte/ms" << endl;
 
     }      
     Disconnect(server, server_addr, len);
