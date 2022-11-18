@@ -26,13 +26,6 @@ double MAX_WAIT_TIME = 0.5* CLOCKS_PER_SEC;
 void printsplit() {
     cout << "--------------------------------------------------------------------------" << endl;
 }
-
-/*
-1.把伪首部添加到UDP上；
-2.计算初始时是需要将检验和字段添零的；
-3.把所有位划分为16位（2字节）的字
-4.把所有16位的字相加，如果遇到进位，则将高于16字节的进位部分的值加到最低位上，举例，0xBB5E+0xFCED=0x1 B84B，则将1放到最低位，得到结果是0xB84C
-5.将所有字相加得到的结果应该为一个16位的数，将该数取反则可以得到检验和checksum。 */
 u_short cksum(u_short* mes, int size) {
     int count = (size + 1) / 2;
     u_short* buf = (u_short*)malloc(size + 1);
@@ -49,54 +42,45 @@ u_short cksum(u_short* mes, int size) {
     return ~(sum & 0xffff);
 }
 
-struct HEADER
-{
+struct HEADER{
     u_short sum = 0;//校验和 16位
     u_short datasize = 0;//所包含数据长度 16位
     u_short flag = 0;
-    //八位，使用后四位，排列是FIN ACK SYN 
     u_short SEQ = 0;
-    //八位，传输的序列号，0~255，超过后mod
     HEADER() {
-        sum = 0;//校验和 16位
-        datasize = 0;//所包含数据长度 16位
+        sum = 0;
+        datasize = 0;
         flag = 0;
-        //八位，使用后三位，排列是FIN ACK SYN 
         SEQ = 0;
     }
 };
 
-int Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)//三次握手建立连接
-{
+bool Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){//三次握手建立连接
   
     HEADER header;
-    char* Buffer = new char[sizeof(header)];
-
+    char* buff = new char[sizeof(header)];
     u_short sum;
-
     //进行第一次握手
     header.flag = SYN_1_ACK_0;
     header.sum = 0;//校验和置0
     header.sum = cksum((u_short*)&header, sizeof(header));
-    memcpy(Buffer, &header, sizeof(header));//将首部放入缓冲区
-    if (sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen) == -1)
-    {
-        return -1;
+    memcpy(buff, &header, sizeof(header));//将首部放入缓冲区
+    if (sendto(socketClient, buff, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen) == -1){
+        return false;
     }
     clock_t start = clock();
-   
+    u_long mode = 1;
+    ioctlsocket(socketClient, FIONBIO, &mode);
 
     //接收第二次握手
-    while (recvfrom(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
-    {
+    while (recvfrom(socketClient, buff, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0){
         
-        if (clock()-start > MAX_WAIT_TIME)//超时，重新传输第一次握手
-        {
+        if (clock()-start > MAX_WAIT_TIME){//超时，重新传输第一次握手
             header.flag = SYN_1_ACK_0;
             header.sum = 0;//校验和置0
             header.sum = cksum((u_short*)&header, sizeof(header));//计算校验和
-            memcpy(Buffer, &header, sizeof(header));//将首部放入缓冲区
-            sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
+            memcpy(buff, &header, sizeof(header));//将首部放入缓冲区
+            sendto(socketClient, buff, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
             start = clock();
             cout << "time out for first hello. resending....." << endl;
         }
@@ -104,17 +88,15 @@ int Connect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)//三�
 
 
     //进行校验和检验
-    memcpy(&header, Buffer, sizeof(header));
-    if (header.flag == SYN_1_ACK_1 && cksum((u_short*)&header, sizeof(header) == 0))
-    {
+    memcpy(&header, buff, sizeof(header));
+    if (header.flag == SYN_1_ACK_1 && cksum((u_short*)&header, sizeof(header) == 0)){
         cout << "second hello----check\nconnection succeeded" << endl;
     }
-    else
-    {
+    else{
         cout << "error" << endl;
-        return -1;
+        return false;
     }
-
+    return true;
     
 }
 
@@ -126,20 +108,18 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
 
     int packagenum = lenlen / MAXSIZE + (lenlen % MAXSIZE != 0);
     int seq = 0;
-    for (int i = 0; i < packagenum; i++)
-    {
-       // send_package(socketClient, servAddr, servAddrlen, msg + i * MAXSIZE, i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE, seq);
+    for (int i = 0; i < packagenum; i++){
         char* message = msg + i * MAXSIZE;
         int len = (i == packagenum - 1 ? lenlen - (packagenum - 1) * MAXSIZE : MAXSIZE);
         HEADER header;
-        char* buffer = new char[MAXSIZE + sizeof(header)];
+        char* buff = new char[MAXSIZE + sizeof(header)];
         header.datasize = len;
         header.SEQ = u_short(seq);//序列号
-        memcpy(buffer, &header, sizeof(header));
-        memcpy(buffer + sizeof(header), message, sizeof(header) + len);
-        header.sum = cksum((u_short*)buffer, sizeof(header) + len);//计算校验和
-        memcpy(buffer, &header, sizeof(header));
-        sendto(socketClient, buffer, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//发送
+        memcpy(buff, &header, sizeof(header));
+        memcpy(buff + sizeof(header), message, sizeof(header) + len);
+        header.sum = cksum((u_short*)buff, sizeof(header) + len);//计算校验和
+        memcpy(buff, &header, sizeof(header));
+        sendto(socketClient, buff, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//发送
         printsplit();
         cout << "Send message " << len << " B!" << " flag:" << int(header.flag) << " SEQ:" << int(header.SEQ) << " SUM:" << int(header.sum) << endl;
         clock_t start = clock();
@@ -148,7 +128,7 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
         {
             u_long mode = 1;
             ioctlsocket(socketClient, FIONBIO, &mode);
-            while (recvfrom(socketClient, buffer, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
+            while (recvfrom(socketClient, buff, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
             {
                 
                 if (clock()-start > MAX_WAIT_TIME)
@@ -156,17 +136,17 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
                     header.datasize = len;
                     header.SEQ = u_char(seq);//序列号
                     header.flag = u_char(0x0);
-                    memcpy(buffer, &header, sizeof(header));
-                    memcpy(buffer + sizeof(header), message, sizeof(header) + len);
-                    header.sum = cksum((u_short*)buffer, sizeof(header) + len);//计算校验和
-                    memcpy(buffer, &header, sizeof(header));
-                    sendto(socketClient, buffer, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//发送
+                    memcpy(buff, &header, sizeof(header));
+                    memcpy(buff + sizeof(header), message, sizeof(header) + len);
+                    header.sum = cksum((u_short*)buff, sizeof(header) + len);//计算校验和
+                    memcpy(buff, &header, sizeof(header));
+                    sendto(socketClient, buff, len + sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);//发送
                     printsplit();
                     cout << "TIME OUT! ReSend message " << len << " bytes! Flag:" << int(header.flag) << " SEQ:" << int(header.SEQ) << endl;
                     clock_t start = clock();
                 }
             }
-            memcpy(&header, buffer, sizeof(header));//缓冲区接收到信息，读取
+            memcpy(&header, buff, sizeof(header));//缓冲区接收到信息，读取
             u_short check = cksum((u_short*)&header, sizeof(header));
             if (header.SEQ == u_short(seq) && header.flag == SYN_0_ACK_1)
             {
@@ -180,8 +160,7 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
             }
         }
         u_long mode = 0;
-        ioctlsocket(socketClient, FIONBIO, &mode);//改回阻塞模式
-       
+        ioctlsocket(socketClient, FIONBIO, &mode);//改回阻塞模式       
         seq++;
         
     }
@@ -195,8 +174,7 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
     sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen);
     cout << "Send End!" << endl;
     clock_t start = clock();
-    while (1 == 1)
-    {
+    while (1){
         u_long mode = 1;
         ioctlsocket(socketClient, FIONBIO, &mode);
         while (recvfrom(socketClient, Buffer, MAXSIZE, 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
@@ -217,13 +195,11 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
         }
         memcpy(&header, Buffer, sizeof(header));//缓冲区接收到信息，读取
         u_short check = cksum((u_short*)&header, sizeof(header));
-        if (header.flag == END)
-        {
+        if (header.flag == END){
             cout << "server has received the file!" << endl;
             break;
         }
-        else
-        {
+        else{
             continue;
         }
     }
@@ -233,8 +209,7 @@ void sendMessage(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen, 
 
 
 
-int Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)
-{
+bool Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen){
  
     HEADER header;
     char* Buffer = new char[sizeof(header)];
@@ -246,19 +221,16 @@ int Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)
     header.sum = 0;//校验和置0
     header.sum = cksum((u_short*)&header, sizeof(header));
     memcpy(Buffer, &header, sizeof(header));//将首部放入缓冲区
-    if (sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen) == -1)
-    {
-        return -1;
+    if (sendto(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, servAddrlen) == -1){
+        return false;
     }
     clock_t start = clock();
- 
+    u_long mode = 1;
+    ioctlsocket(socketClient, FIONBIO, &mode);
 
     //接收第二次挥手
-    while (recvfrom(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0)
-    {
-
-        if (clock()-start > MAX_WAIT_TIME)//超时，重新传输第一次挥手
-        {
+    while (recvfrom(socketClient, Buffer, sizeof(header), 0, (sockaddr*)&servAddr, &servAddrlen) <= 0){
+        if (clock()-start > MAX_WAIT_TIME){//超时，重新传输第一次挥手
             header.flag = FIN_1_ACK_1;
             header.sum = 0;//校验和置0
             header.sum = cksum((u_short*)&header, sizeof(header));//计算校验和
@@ -279,11 +251,11 @@ int Disconnect(SOCKET& socketClient, SOCKADDR_IN& servAddr, int& servAddrlen)
     else
     {
         cout << "error" << endl;
-        return -1;
+        return false;
     }
 
     
-    return 1;
+    return true;
 }
 
 
@@ -296,7 +268,7 @@ int main()
     SOCKET server;
 
     server_addr.sin_family = AF_INET;//使用IPV4
-    server_addr.sin_port = htons(4000);
+    server_addr.sin_port = htons(4001);
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     server = socket(AF_INET, SOCK_DGRAM, 0);
@@ -353,12 +325,8 @@ int main()
         QueryPerformanceCounter((LARGE_INTEGER*)&head);
         sendMessage(server, server_addr, len, buffer, i);
         QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-        cout << "传输总时间为: " << (tail - head) * 1000.0 / freq << " ms" << endl;
-       /* clock_t start = clock();
-        sendMessage(server, server_addr, len, buffer, i);
-        clock_t end = clock();
-        cout << "传输总时间为:" << (end - start) / CLOCKS_PER_SEC << "s" << endl;*/
-        cout << "吞吐率为: " << ((double)i) / ((tail - head) * 1000.0 / freq) << " byte/ms" << endl;
+        cout << "传输总时间为: " << (tail - head)*1.0  / freq << " s" << endl;
+        cout << "吞吐率为: " << ((double)i) / ((tail - head)*1.0 / freq) << " byte/s" << endl;
 
     }      
     Disconnect(server, server_addr, len);
