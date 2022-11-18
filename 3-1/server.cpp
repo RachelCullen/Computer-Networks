@@ -6,13 +6,13 @@
 using namespace std;
 
 
-const int MAXSIZE = 1024;//传输缓冲区最大长度
-u_short SYN_1_ACK_0 = 0x4; //SYN = 1 ACK = 0
-u_short SYN_1_ACK_1 = 0x5;//SYN = 0, ACK = 1
-u_short SYN_0_ACK_1 = 0x1;
-u_short FIN_1_ACK_1 = 0x3;//SYN = 1, ACK = 1
-u_short FIN_1_ACK_0 = 0x2;//FIN = 1 ACK = 0
-u_short END = 0x7;//结束标志，SYN=1,FIN=1,ACK=1
+const int MAXSIZE = 2048;//传输缓冲区最大长度
+const u_short SYN_1_ACK_0 = 0x4; //SYN = 1 ACK = 0
+const u_short SYN_1_ACK_1 = 0x5;//SYN = 0, ACK = 1
+const u_short SYN_0_ACK_1 = 0x1; //give back ack=1 when received 
+const u_short FIN_1_ACK_1 = 0x3;//SYN = 1, ACK = 1
+const u_short FIN_1_ACK_0 = 0x2;//FIN = 1 ACK = 0
+const u_short END = 0x7;//结束标志，SYN=1,FIN=1,ACK=1
 double MAX_WAIT_TIME = 0.5 * CLOCKS_PER_SEC;
 long long head, tail, freq;
 
@@ -36,10 +36,9 @@ u_short cksum(u_short* mes, int size) {
     return ~(sum & 0xffff);
 }
 
-struct HEADER
-{
-    u_short sum = 0;
+struct HEADER{
     u_short datasize = 0;
+    u_short sum = 0;
     u_short flag = 0;
     u_short SEQ = 0;
 
@@ -112,14 +111,13 @@ int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, c
         if (header.flag == u_short(0) && cksum((u_short*)buff, length - sizeof(header))){
             //to see if other data is recieved
             if (seq != int(header.SEQ)){
-                //problems occurred. send back ACK
-                header.flag = SYN_0_ACK_1;
+                //problems occurred. send back ACK=0
+                header.flag = 0;
                 header.datasize = 0;
                 header.SEQ = (u_short)seq;
                 header.sum = 0;
                 header.sum = cksum((u_short*)&header, sizeof(header));
-                memcpy(buff, &header, sizeof(header));
-                
+                memcpy(buff, &header, sizeof(header));                
                 sendto(sockServ, buff, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
                 printsplit();
                 cout << "Send to Client ACK:" << (int)header.flag << " SEQ:" << (int)header.SEQ << endl;
@@ -150,7 +148,7 @@ int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, c
             
         }
     }
-    //发送OVER信息
+    //发送结束信息
     header.flag = END;
     header.sum = 0;
     header.sum = cksum((u_short*)&header, sizeof(header));
@@ -208,14 +206,12 @@ int main(){
     int namelen = RecvMessage(server, server_addr, len, name);
     int datalen = RecvMessage(server, server_addr, len, data);
     string a;
-    for (int i = 0; i < namelen; i++)
-    {
+    for (int i = 0; i < namelen; i++){
         a = a + name[i];
     }
     disConnect(server, server_addr, len);
     ofstream fout(a.c_str(), ofstream::binary);
-    for (int i = 0; i < datalen; i++)
-    {
+    for (int i = 0; i < datalen; i++){
         fout << data[i];
     }
     fout.close();
