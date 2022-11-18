@@ -154,7 +154,7 @@ int RecvMessage(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, c
             header.sum = 0;
             header.sum = cksum((u_short*)&header, sizeof(header));
             memcpy(Buffer, &header, sizeof(header));
-            //sesend ACK
+            //resend ACK
             sendto(sockServ, Buffer, sizeof(header), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
             printsplit();
             cout << "Send to Client ACK:" << (int)header.flag << " SEQ:" << (int)header.SEQ << endl;
@@ -211,7 +211,7 @@ int main()
     SOCKET server;
 
     server_addr.sin_family = AF_INET;//使用IPV4
-    server_addr.sin_port = htons(8000);
+    server_addr.sin_port = htons(4001);
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     server = socket(AF_INET, SOCK_DGRAM, 0);
