@@ -1,4 +1,4 @@
-#ifndef MYCLIENT_H//¶¨ÒåÕâ¸öÍ·ÎÄ¼ş
+#ifndef MYCLIENT_H//å®šä¹‰è¿™ä¸ªå¤´æ–‡ä»¶
 #define MYCLIENT_H
 #include <iostream>
 #include <WINSOCK2.h>
@@ -14,29 +14,26 @@
 using namespace std;
 
 
-/*-----------------¸÷¸öÈ«¾Ö±äÁ¿¶¨Òå-----------------------------------*/
+/*-----------------å„ä¸ªå…¨å±€å˜é‡å®šä¹‰-----------------------------------*/
 const int MAXSIZE = 2048;
 SOCKADDR_IN server_addr;
 SOCKET server;
-//int SEQ = 0;
-//int ACK = 0;
 double TIMEOUT = 0.005;
 double INTERACT_TIME = 1.0;
-float cwnd = 1; //´°¿Ú´óĞ¡
-int ssthreash = 16; //ãĞÖµ
-int curAcked=-1;//µ±Ç°ÒÑ¾­È·ÈÏµÄ ack 
+double cwnd = 1; //çª—å£å¤§å°
+double ssthreash = 32; //é˜ˆå€¼
+int curAcked=-1;//å½“å‰å·²ç»ç¡®è®¤çš„ ack 
 int nextseqnum = 0;
-int dupACKcount = 0;//ÖØ¸´½ÓÊÕµÄack£»
-int base = 0;//»ùĞòºÅÒ²ÊÇÎ´È·ÈÏµÄµÚÒ»¸ö°ü
-//ÂıÆô¶¯¡¢¿ìËÙÖØ´«¡¢ÓµÈû±ÜÃâ¶¨Òå£º
+int dupACKcount = 0;//é‡å¤æ¥æ”¶çš„ackï¼›
+int base = 0;//åŸºåºå·ä¹Ÿæ˜¯æœªç¡®è®¤çš„ç¬¬ä¸€ä¸ªåŒ…
+//æ…¢å¯åŠ¨ã€å¿«é€Ÿé‡ä¼ ã€æ‹¥å¡é¿å…å®šä¹‰ï¼š
 const int SLOW_START = -1;
 const int FAST_RE = 0;
 const int CON_AVOID = 1;
 int curState = -1;
-
 const int addrlen = sizeof(server_addr);
 
-/*-------------------ÀàĞÍÖ¡Ê×²¿¶¨Òå-------------------------*/
+/*-------------------ç±»å‹å¸§é¦–éƒ¨å®šä¹‰-------------------------*/
 class Header {
 public:
     u_short datasize = 0;
@@ -46,7 +43,7 @@ public:
     u_char seq = 0;//seq==ack
 
     Header() { flag = 0; }
-    //ÉèÖÃheaderÀïµÄ¸÷Î»£¬×¢ÒâÕâÀïµÄseqÃ»ÓĞÄ£256£¬ĞèÒª´«²ÎÊ±×ª»»
+    //è®¾ç½®headeré‡Œçš„å„ä½ï¼Œæ³¨æ„è¿™é‡Œçš„seqæ²¡æœ‰æ¨¡256ï¼Œéœ€è¦ä¼ å‚æ—¶è½¬æ¢
     void setHeader(u_short d, u_char f, u_short se) {
         this->datasize = d;
         this->seq = se;
@@ -59,22 +56,22 @@ public:
     }
 
 };
-/*--------------------------------Êı¾İ°ü½á¹¹¶¨Òå-----------------------------------------------*/
+/*--------------------------------æ•°æ®åŒ…ç»“æ„å®šä¹‰-----------------------------------------------*/
 struct Packet {
-    Header header;//UDPÊ×²¿
-    char* Buffer;//Êı¾İÇø
+    Header header;//UDPé¦–éƒ¨
+    char* Buffer;//æ•°æ®åŒº
     Packet() {
         Buffer = new char[MAXSIZE + sizeof(header)]();
     }
 };
-/*----------------------------ËùÒªÓÃµÄº¯Êı--------------------------------------------------*/
+/*----------------------------æ‰€è¦ç”¨çš„å‡½æ•°--------------------------------------------------*/
 void varReset() {
-    cwnd = 1; //´°¿Ú´óĞ¡
-    ssthreash = 16; //ãĞÖµ
-    curAcked = -1;//µ±Ç°ÒÑ¾­È·ÈÏµÄ ack 
+    cwnd = 1; //çª—å£å¤§å°
+    ssthreash = 32; //é˜ˆå€¼
+    curAcked = -1;//å½“å‰å·²ç»ç¡®è®¤çš„ ack 
     nextseqnum = 0;
-    dupACKcount = 0;//ÖØ¸´½ÓÊÕµÄack£»
-    base = 0;//»ùĞòºÅÒ²ÊÇÎ´È·ÈÏµÄµÚÒ»¸ö°ü
+    dupACKcount = 0;//é‡å¤æ¥æ”¶çš„ackï¼›
+    base = 0;//åŸºåºå·ä¹Ÿæ˜¯æœªç¡®è®¤çš„ç¬¬ä¸€ä¸ªåŒ…
     curState = -1;
 }
 bool cksend(Header h);
@@ -89,7 +86,7 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* mes
 void start(int len);
 
 
-/*-----------------------¸÷º¯Êı¶¨Òå----------------------------------------------------------*/
+/*-----------------------å„å‡½æ•°å®šä¹‰----------------------------------------------------------*/
 
 int ckstate() {
     if (cwnd < ssthreash) {
@@ -102,7 +99,7 @@ int ckstate() {
 bool isFastRe() {
     return dupACKcount == 3;
 }
-//ÈıÖÖ×´Ì¬ÔÙÊÕµ½·ÇÈßÓàackµÄÊ±ºòĞèÒª¸üĞÂcwndºÍssthresh£¬ÔÚÕâÀï¸ù¾İ²»Í¬×´Ì¬½øĞĞ¸üĞÂ
+//ä¸‰ç§çŠ¶æ€å†æ”¶åˆ°éå†—ä½™ackçš„æ—¶å€™éœ€è¦æ›´æ–°cwndå’Œssthreshï¼Œåœ¨è¿™é‡Œæ ¹æ®ä¸åŒçŠ¶æ€è¿›è¡Œæ›´æ–°
 int state_after_newack(int curState) {
     if (curState == SLOW_START) {
         cwnd += 1;
@@ -119,7 +116,7 @@ int state_after_newack(int curState) {
         dupACKcount == 0;
         return ckstate();
     }
-    return -2;//É¶Ò²²»ÊÇ¡£errorÁË
+    return -2;//å•¥ä¹Ÿä¸æ˜¯ã€‚erroräº†
 }
 int state_after_timeout(int curState) {
     if (curState == SLOW_START||curState == FAST_RE) {
@@ -148,14 +145,14 @@ u_short cksum(u_short* buff, int size) {
     memset(buf, 0, size + 1);
     memcpy(buf, buff, size);
     u_short sum = 0;
-    while (count--) {//¶ş½øÖÆ·´ÂëÇóºÍ
+    while (count--) {//äºŒè¿›åˆ¶åç æ±‚å’Œ
         sum += *buf++;
         if (sum & 0xFFFF0000) {
             sum &= 0xFFFF;
             sum++;
         }
     }
-    return ~(sum & 0xFFFF);//½á¹ûÈ¡·´
+    return ~(sum & 0xFFFF);//ç»“æœå–å
 }
 long long time(long long head) {
     long long tail, freq;
@@ -177,16 +174,16 @@ bool check_sign(Header header, u_char sign) {
 void init() {
     WSADATA wsadata;
     WSAStartup(MAKEWORD(2, 2), &wsadata);
-    server_addr.sin_family = AF_INET;//Ê¹ÓÃIPV4
+    server_addr.sin_family = AF_INET;//ä½¿ç”¨IPV4
     server_addr.sin_port = htons(4001);
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     server = socket(AF_INET, SOCK_DGRAM, 0);
-    //bind(server, (SOCKADDR*)&server_addr, sizeof(server_addr));//°ó¶¨Ì×½Ó×Ö£¬½øÈë¼àÌı×´Ì¬
+    //bind(server, (SOCKADDR*)&server_addr, sizeof(server_addr));//ç»‘å®šå¥—æ¥å­—ï¼Œè¿›å…¥ç›‘å¬çŠ¶æ€
     //cout << "waiting client....." << endl;
 
 }
 bool interact(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, string type) {
-    //type ÊÇhello»ògoodbye
+    //type æ˜¯helloæˆ–goodbye
     int sendsign = 0, recvsign = 0;
     if (type == "hello") {
         sendsign = 0x4;
@@ -200,10 +197,10 @@ bool interact(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, str
     Header sendh;
     char* Buffer = new char[sizeof(recvh)];
     int res = 0;
-    sendh.setHeader(0, sendsign, 0);//ÉèÖÃflag
-    setSum(sendh);//Ğ£ÑéºÍÖÃ0²¢½øĞĞ¼ÆËã
+    sendh.setHeader(0, sendsign, 0);//è®¾ç½®flag
+    setSum(sendh);//æ ¡éªŒå’Œç½®0å¹¶è¿›è¡Œè®¡ç®—
     memcpy(Buffer, &sendh, sizeof(sendh));
-    //·¢ËÍµÚÒ»´ÎÎÕÊÖĞÅÏ¢
+    //å‘é€ç¬¬ä¸€æ¬¡æ¡æ‰‹ä¿¡æ¯
     res = sendto(sockServ, Buffer, sizeof(recvh), 0, (sockaddr*)&ClientAddr, ClientAddrLen);
 
     if (res == -1) {
@@ -238,13 +235,13 @@ bool interact(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, str
         return false;
     }
 }
-//·¢ËÍpkt²¢ÇÒ´òÓ¡pktÖĞheaderµÄĞÅÏ¢
+//å‘é€pktå¹¶ä¸”æ‰“å°pktä¸­headerçš„ä¿¡æ¯
 void snd_pkt(Packet sendp) {
-    sendto(server, sendp.Buffer, sizeof(sendp.header)+sendp.header.datasize, 0, (sockaddr*)&server_addr, addrlen);//·¢ËÍÊı¾İ°ü
-    //cout << "send " << sendp.header.datasize << " Byte£º";
+    sendto(server, sendp.Buffer, sizeof(sendp.header)+sendp.header.datasize, 0, (sockaddr*)&server_addr, addrlen);//å‘é€æ•°æ®åŒ…
+    //cout << "send " << sendp.header.datasize << " Byteï¼š";
     sendp.header.show_header();
 }
-//°Ñ¶ÔÓ¦µÄHeaderºÍdatabufĞ´ÈëpktµÄbufferÖĞ£¬°üÀ¨seqÄ£256£¬¼ÆËãºÃĞ£ÑéºÍµÈ·½·¨
+//æŠŠå¯¹åº”çš„Headerå’Œdatabufå†™å…¥pktçš„bufferä¸­ï¼ŒåŒ…æ‹¬seqæ¨¡256ï¼Œè®¡ç®—å¥½æ ¡éªŒå’Œç­‰æ–¹æ³•
 void mk_pkt(Packet& sendp, bool END, char* databuf, int datatsize,int seq) {
     seq %= 256;
     sendp.header.seq = (u_char)seq;
@@ -275,49 +272,64 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
         num = len / MAXSIZE + 1;
     }
     cout << "packets:" << num << endl;
-    Packet sendp;//Õâ¸ö°üµÄseqÊÇnextseqnum£¬ÊÇµ±Ç°Òª·¢µÄ
+    Packet sendp;//è¿™ä¸ªåŒ…çš„seqæ˜¯nextseqnumï¼Œæ˜¯å½“å‰è¦å‘çš„
     
-    while (base < num-1) {//Ç°Õû¸ömaxsizeµÄ°ü¶¼ÕâÃ´·¢×îºóÒ»¸öµ¥¶À·¢
+    while (base < num-1) {//å‰æ•´ä¸ªmaxsizeçš„åŒ…éƒ½è¿™ä¹ˆå‘æœ€åä¸€ä¸ªå•ç‹¬å‘
 
-        //³õÊ¼Ê±ÊÇÂıÆô¶¯½×¶Î
+        //åˆå§‹æ—¶æ˜¯æ…¢å¯åŠ¨é˜¶æ®µ
         if (nextseqnum < base + cwnd ) {
             mk_pkt(sendp, nextseqnum == num - 1, data + nextseqnum * MAXSIZE, nextseqnum == num - 1 ? len - (num - 1) * MAXSIZE : MAXSIZE, nextseqnum % 256);
-            cout << "[SEND] packet No.[" << nextseqnum << "]: ";
+            cout << "[SEND][cwnd="<<(int)cwnd<<",ssthreash="<<(int)ssthreash<<"] packet No.[" << nextseqnum << "]: ";
+            //printf("[SEND][cwnd=%d,ssthreash=%d] packet No.[%d]",cwnd,ssthreash,nextseqnum );
             snd_pkt(sendp);
-            
-            QueryPerformanceCounter((LARGE_INTEGER*)&head); 
+            if (base == nextseqnum)
+                QueryPerformanceCounter((LARGE_INTEGER*)&head); 
             nextseqnum++;
 
         }
         u_long mode = 1;
         ioctlsocket(clientsocket, FIONBIO, &mode);
-
+        Sleep(20);
         if (recvfrom(clientsocket, buf, MAXSIZE, 0, (sockaddr*)&serveraddr, &addrlen)) {
             memcpy(&recvh, buf, sizeof(recvh));
-            //ÆäËûµÄackÈ«¶¼ºöÂÔ£¬Ö»½ÓÊÕbaseÏàµÈµÄack,
-            //¼´new ack
-            if (recvh.ack == base % 256) {
-                //×´Ì¬¸üĞÂ
+            //å…¶ä»–çš„ackå…¨éƒ½å¿½ç•¥ï¼Œåªæ¥æ”¶baseç›¸ç­‰çš„ack,
+            //å³new ack
+            
+            if(recvh.ack >= base % 256 && (recvh.seq - base % 256 <= cwnd)) {
+                //çŠ¶æ€æ›´æ–°
                 int temp = state_after_newack(curState);
                 curState = temp;
-                //È·ÈÏÁË¾ÍÊÇÕâ¸ö°ü£¬´°¿ÚÅ²¶¯
+                //ç¡®è®¤äº†å°±æ˜¯è¿™ä¸ªåŒ…ï¼Œçª—å£æŒªåŠ¨
                 cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
                 //recvh.show_header();
-                base ++;
-                curAcked++;
+                base += recvh.ack - base % 256 + 1;
+                curAcked += recvh.ack - base % 256 + 1;
                 curAcked %= 256;
-                
+                if (base != nextseqnum)
+                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
 
             }
-            /*¿ìÖØ´«½×¶Î£º·¢ËÍ·½Ö»ÒªÒ»Á¬½ÓÊÕµ½Èı¸öÖØ¸´È·ÈÏ¾ÍÓ¦¸ÃÁ¢¼´ÖØ´«¶Ô·½ÉĞÎ´½ÓÊÕµÄ±¨ÎÄ¶Î£¬
-            ¶ø²»±ØµÈµ½ÖØ´«¼ÆÊ±Æ÷³¬Ê±ºó·¢ËÍ¡£
-            ÓÉ3¸öÖØ¸´Ó¦´ğÅĞ¶ÏÓĞ°ü¶ªÊ§£¬ÖØĞÂ·¢ËÍ¶ª°üµÄĞÅÏ¢¡£*/
+            else if (recvh.ack < cwnd && base % 256>255 - cwnd) {
+                //çŠ¶æ€æ›´æ–°
+                int temp = state_after_newack(curState);
+                curState = temp;
+                //ç¡®è®¤äº†å°±æ˜¯è¿™ä¸ªåŒ…ï¼Œçª—å£æŒªåŠ¨
+                cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
+                base += recvh.seq + 256 - base % 256 + 1;
+                curAcked += recvh.seq + 256 - base % 256 + 1;
+                curAcked %= 256;
+                if (base != nextseqnum)
+                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
+            }
+            /*å¿«é‡ä¼ é˜¶æ®µï¼šå‘é€æ–¹åªè¦ä¸€è¿æ¥æ”¶åˆ°ä¸‰ä¸ªé‡å¤ç¡®è®¤å°±åº”è¯¥ç«‹å³é‡ä¼ å¯¹æ–¹å°šæœªæ¥æ”¶çš„æŠ¥æ–‡æ®µï¼Œ
+            è€Œä¸å¿…ç­‰åˆ°é‡ä¼ è®¡æ—¶å™¨è¶…æ—¶åå‘é€ã€‚
+            ç”±3ä¸ªé‡å¤åº”ç­”åˆ¤æ–­æœ‰åŒ…ä¸¢å¤±ï¼Œé‡æ–°å‘é€ä¸¢åŒ…çš„ä¿¡æ¯ã€‚*/
             else {
                 dupACKcount++;
                 if (dupACKcount == 3) {
                     ssthreash = cwnd / 2;
                     cwnd = ssthreash + 3;
-                    nextseqnum = base;//ÖØ´«ËùÓĞÎ´È·ÈÏµÄÖµ
+                    nextseqnum = base;//é‡ä¼ æ‰€æœ‰æœªç¡®è®¤çš„å€¼
                     cout << "*************************dupACKcount = 3! resend from packet No.[" << base << "]*********************************" << endl;
 
                 }
@@ -336,7 +348,7 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
         ioctlsocket(clientsocket, FIONBIO, &mode);
 
     }
-    //·¢ËÍ×îºóÒ»¸ö°ü,²ÉÓÃ3-1µÄÆÕÍ¨·½·¨£¬
+    //å‘é€æœ€åä¸€ä¸ªåŒ…,é‡‡ç”¨3-1çš„æ™®é€šæ–¹æ³•ï¼Œ
     sendp.header.setHeader(len - (num - 1) * MAXSIZE, 0x7, (nextseqnum % 256));
     mk_pkt(sendp, true, data + (num - 1) * MAXSIZE, len - (num - 1) * MAXSIZE, nextseqnum);
     snd_pkt(sendp);
@@ -346,7 +358,7 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
         u_long mode = 1;
         ioctlsocket(clientsocket, FIONBIO, &mode);
         while (recvfrom(clientsocket, buf, sizeof(recvh), 0, (sockaddr*)&serveraddr, &addrlen) <= 0) {
-            if (time(head) > TIMEOUT) {//³¬Ê±£¬ÖØĞÂ´«Êä
+            if (time(head) > TIMEOUT) {//è¶…æ—¶ï¼Œé‡æ–°ä¼ è¾“
                 cout << "time out! resend:" << endl;
                 sendp.header.setHeader(len - (num - 1) * MAXSIZE, 0x7, (nextseqnum % 256));
                 mk_pkt(sendp, true, data + (num - 1) * MAXSIZE, len - (num - 1) * MAXSIZE, nextseqnum);
@@ -360,7 +372,7 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
             curAcked = recvh.ack;
             //recvh.ack==
             if (ckend(recvh)) {
-                cout << "server has received£¡" << endl;
+                cout << "server has receivedï¼" << endl;
                 break;
             }
             else if (cksend(recvh)) {
@@ -374,17 +386,17 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
 
     }
     u_long mode = 0;
-    ioctlsocket(clientsocket, FIONBIO, &mode);//¸Ä»Ø×èÈûÄ£Ê½
+    ioctlsocket(clientsocket, FIONBIO, &mode);//æ”¹å›é˜»å¡æ¨¡å¼
     varReset();
     
 }
 void start(int len) {
     vector<string> fileNames;
-    string path("D:\\111programs\\3-3client"); 	//×Ô¼ºÑ¡ÔñÄ¿Â¼²âÊÔ
+    string path("D:\\111programs\\3-3client"); 	//è‡ªå·±é€‰æ‹©ç›®å½•æµ‹è¯•
 
     vector<string> files;
-    intptr_t hFile = 0;//ÎÄ¼ş¾ä±ú    
-    struct _finddata_t fileinfo;//ÎÄ¼şĞÅÏ¢
+    intptr_t hFile = 0;//æ–‡ä»¶å¥æŸ„    
+    struct _finddata_t fileinfo;//æ–‡ä»¶ä¿¡æ¯
     string p1, p2;
     if ((hFile = _findfirst(p1.assign(path).append("\\*").c_str(), &fileinfo)) != -1)
     {
@@ -408,8 +420,8 @@ void start(int len) {
     cin >> x;
     if (x) {
         string myfile = files[x - 1];
-        cout << "starting£º" << files[x - 1] << endl;
-        ifstream fin(myfile.c_str(), ifstream::binary);//ÒÔ¶ş½øÖÆ·½Ê½´ò¿ªÎÄ¼ş
+        cout << "startingï¼š" << files[x - 1] << endl;
+        ifstream fin(myfile.c_str(), ifstream::binary);//ä»¥äºŒè¿›åˆ¶æ–¹å¼æ‰“å¼€æ–‡ä»¶
         char* buffer = new char[100000000];
         int i = 0;
         u_short temp = fin.get();
@@ -425,15 +437,10 @@ void start(int len) {
         QueryPerformanceCounter((LARGE_INTEGER*)&head);
         send(server, server_addr, len, buffer, i);
         QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-        cout << "´«Êä×ÜÊ±¼äÎª: " << (tail - head) * 1.0 / freq << " s" << endl;
-        cout << "ÍÌÍÂÂÊÎª: " << ((double)i) / ((tail - head) * 1.0 / freq) << " byte/s" << endl;
+        cout << "ä¼ è¾“æ€»æ—¶é—´ä¸º: " << (tail - head) * 1.0 / freq << " s" << endl;
+        cout << "ååç‡ä¸º: " << ((double)i) / ((tail - head) * 1.0 / freq) << " byte/s" << endl;
 
     }
 }
 
-
-
 #endif
-
-#pragma once
-
