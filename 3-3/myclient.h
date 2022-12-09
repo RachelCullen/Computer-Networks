@@ -3,6 +3,7 @@
 #include <iostream>
 #include <WINSOCK2.h>
 #include <time.h>
+#include<process.h>
 #include <sstream>
 #include <windows.h>
 #include <fstream>
@@ -13,27 +14,6 @@
 
 using namespace std;
 
-
-/*-----------------各个全局变量定义-----------------------------------*/
-const int MAXSIZE = 2048;
-SOCKADDR_IN server_addr;
-SOCKET server;
-double TIMEOUT = 0.005;
-double INTERACT_TIME = 1.0;
-double cwnd = 1; //窗口大小
-double ssthreash = 32; //阈值
-int curAcked=-1;//当前已经确认的 ack 
-int nextseqnum = 0;
-int dupACKcount = 0;//重复接收的ack；
-int base = 0;//基序号也是未确认的第一个包
-//慢启动、快速重传、拥塞避免定义：
-const int SLOW_START = -1;
-const int FAST_RE = 0;
-const int CON_AVOID = 1;
-int curState = -1;
-const int addrlen = sizeof(server_addr);
-
-/*-------------------类型帧首部定义-------------------------*/
 class Header {
 public:
     u_short datasize = 0;
@@ -52,10 +32,33 @@ public:
     }
 
     void show_header() {
-        cout << "datasize: " << (int)this->datasize << " seq: " <<(int) this->seq << " flag: " << (int)this->flag << endl;
+        cout << "datasize: " << (int)this->datasize << " seq: " << (int)this->seq << " flag: " << (int)this->flag << endl;
     }
 
 };
+/*-----------------各个全局变量定义-----------------------------------*/
+const int MAXSIZE = 2048;
+SOCKADDR_IN server_addr;
+SOCKET server;
+double TIMEOUT = 0.5;
+double INTERACT_TIME = 1.0;
+double cwnd = 1; //窗口大小
+double ssthreash = 16; //阈值
+int curAcked=-1;//当前已经确认的 ack 
+int nextseqnum = 0;
+int dupACKcount = 0;//重复接收的ack；
+int base = 0;//基序号也是未确认的第一个包
+//慢启动、快速重传、拥塞避免定义：
+const int SLOW_START = -1;
+const int FAST_RE = 0;
+const int CON_AVOID = 1;
+int curState = -1;
+int addrlen = sizeof(server_addr);
+long long head = 0;
+int num = 0;
+
+/*-------------------类型帧首部定义-------------------------*/
+
 /*--------------------------------数据包结构定义-----------------------------------------------*/
 struct Packet {
     Header header;//UDP首部
@@ -67,12 +70,31 @@ struct Packet {
 /*----------------------------所要用的函数--------------------------------------------------*/
 void varReset() {
     cwnd = 1; //窗口大小
-    ssthreash = 32; //阈值
+    ssthreash = 16; //阈值
     curAcked = -1;//当前已经确认的 ack 
     nextseqnum = 0;
     dupACKcount = 0;//重复接收的ack；
     base = 0;//基序号也是未确认的第一个包
     curState = -1;
+    head = 0;
+    num = 0;
+
+}
+void showState() {
+    switch (curState)
+    {
+    case(0):
+        cout << "[FAST_RE]";
+        break;
+    case(-1):
+        cout << "[SLOW_START]";
+        break;
+    case(1):
+        cout << "[CON_AVOID]";
+        break;
+    default:
+        break;
+    }
 }
 bool cksend(Header h);
 bool ckend(Header h);
@@ -175,7 +197,7 @@ void init() {
     WSADATA wsadata;
     WSAStartup(MAKEWORD(2, 2), &wsadata);
     server_addr.sin_family = AF_INET;//使用IPV4
-    server_addr.sin_port = htons(4001);
+    server_addr.sin_port = htons(4000);
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     server = socket(AF_INET, SOCK_DGRAM, 0);
     //bind(server, (SOCKADDR*)&server_addr, sizeof(server_addr));//绑定套接字，进入监听状态
@@ -259,12 +281,78 @@ void mk_pkt(Packet& sendp, bool END, char* databuf, int datatsize,int seq) {
 
 
 
+DWORD WINAPI thread_recv(LPVOID lparam) {
+    Header recvh;
+    char* buf = new char[sizeof(recvh)];
+   // recvparams* p = (recvparams*)lparam;
+   // SOCKET clientsocket = (SOCKET)client_socket;
+    int addrlen = sizeof(server_addr);
+    while (true) {
+        if (recvfrom(server, buf, MAXSIZE, 0, (sockaddr*)&server_addr, &addrlen)) {
+            memcpy(&recvh, buf, sizeof(recvh));
+            //其他的ack全都忽略，只接收base相等的ack,
+            //即new ack
+            if (recvh.flag == 1) {
+                if (recvh.ack >= base % 256 && (recvh.seq - base % 256 <= cwnd)) {
+                    //状态更新
+                    int temp = state_after_newack(curState);
+                    curState = temp;
+                    //确认了就是这个包，窗口挪动
+                    cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
+                    //recvh.show_header();
+                    base += recvh.ack - base % 256 + 1;
+                    curAcked += recvh.ack - base % 256 + 1;
+                    curAcked %= 256;
+                    if (base != nextseqnum)
+                        QueryPerformanceCounter((LARGE_INTEGER*)&head);
+
+                }
+                else if (recvh.ack < cwnd && base % 256>255 - cwnd) {
+                    //状态更新
+                    int temp = state_after_newack(curState);
+                    curState = temp;
+                    //确认了就是这个包，窗口挪动
+                    cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
+                    base += recvh.seq + 256 - base % 256 + 1;
+                    curAcked += recvh.seq + 256 - base % 256 + 1;
+                    curAcked %= 256;
+                    if (base != nextseqnum)
+                        QueryPerformanceCounter((LARGE_INTEGER*)&head);
+                }
+                /*快重传阶段：发送方只要一连接收到三个重复确认就应该立即重传对方尚未接收的报文段，
+                而不必等到重传计时器超时后发送。
+                由3个重复应答判断有包丢失，重新发送丢包的信息。*/
+                else {
+                    dupACKcount++;
+                    if (dupACKcount == 3) {
+                        ssthreash = cwnd / 2;
+                        cwnd = ssthreash + 3;
+                        nextseqnum = base;//重传所有未确认的值
+                        cout << "*************************dupACKcount = 3! resend from packet No.[" << base << "]*********************************" << endl;
+
+                    }
+                }
+            }
+
+        }
+
+        if (time(head) > TIMEOUT) {
+            int temp = state_after_timeout(curState);
+            curState = temp;
+            nextseqnum = base;
+            cout << "*************************TIME OUT! resend from packet No.[" << base << "]*********************************" << endl;
+
+        }
+        if (base == num - 1) {
+            break;
+        }
+    }
+    return 0;
+}
 
 void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* data, int len) {
-    Header recvh;
-    long long head;
-    char* buf = new char[sizeof(recvh)];
-    int num = 0;
+
+
     if (len % MAXSIZE == 0) {
         num = len / MAXSIZE;
     }
@@ -273,9 +361,12 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
     }
     cout << "packets:" << num << endl;
     Packet sendp;//这个包的seq是nextseqnum，是当前要发的
-    
+    HANDLE sndThread,recvThread;
+    DWORD dwThreadId1,dwThreadId2;
+    if (base < num - 1)
+        CreateThread(NULL, NULL, &thread_recv, NULL, 0, NULL);
+    //Sleep(20);
     while (base < num-1) {//前整个maxsize的包都这么发最后一个单独发
-
         //初始时是慢启动阶段
         if (nextseqnum < base + cwnd ) {
             mk_pkt(sendp, nextseqnum == num - 1, data + nextseqnum * MAXSIZE, nextseqnum == num - 1 ? len - (num - 1) * MAXSIZE : MAXSIZE, nextseqnum % 256);
@@ -287,68 +378,12 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
             nextseqnum++;
 
         }
-        u_long mode = 1;
-        ioctlsocket(clientsocket, FIONBIO, &mode);
-        Sleep(20);
-        if (recvfrom(clientsocket, buf, MAXSIZE, 0, (sockaddr*)&serveraddr, &addrlen)) {
-            memcpy(&recvh, buf, sizeof(recvh));
-            //其他的ack全都忽略，只接收base相等的ack,
-            //即new ack
-            
-            if(recvh.ack >= base % 256 && (recvh.seq - base % 256 <= cwnd)) {
-                //状态更新
-                int temp = state_after_newack(curState);
-                curState = temp;
-                //确认了就是这个包，窗口挪动
-                cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
-                //recvh.show_header();
-                base += recvh.ack - base % 256 + 1;
-                curAcked += recvh.ack - base % 256 + 1;
-                curAcked %= 256;
-                if (base != nextseqnum)
-                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
-
-            }
-            else if (recvh.ack < cwnd && base % 256>255 - cwnd) {
-                //状态更新
-                int temp = state_after_newack(curState);
-                curState = temp;
-                //确认了就是这个包，窗口挪动
-                cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
-                base += recvh.seq + 256 - base % 256 + 1;
-                curAcked += recvh.seq + 256 - base % 256 + 1;
-                curAcked %= 256;
-                if (base != nextseqnum)
-                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
-            }
-            /*快重传阶段：发送方只要一连接收到三个重复确认就应该立即重传对方尚未接收的报文段，
-            而不必等到重传计时器超时后发送。
-            由3个重复应答判断有包丢失，重新发送丢包的信息。*/
-            else {
-                dupACKcount++;
-                if (dupACKcount == 3) {
-                    ssthreash = cwnd / 2;
-                    cwnd = ssthreash + 3;
-                    nextseqnum = base;//重传所有未确认的值
-                    cout << "*************************dupACKcount = 3! resend from packet No.[" << base << "]*********************************" << endl;
-
-                }
-            }
-        }
-       
-        if (time(head) > TIMEOUT) {
-            int temp = state_after_timeout(curState);
-            curState = temp;
-            nextseqnum = base ;
-            cout << "*************************TIME OUT! resend from packet No.[" << base << "]*********************************" << endl;
-
-        }
-        
-        mode = 0;
-        ioctlsocket(clientsocket, FIONBIO, &mode);
 
     }
+
     //发送最后一个包,采用3-1的普通方法，
+    Header recvh;
+    char* buf = new char[sizeof(recvh)];
     sendp.header.setHeader(len - (num - 1) * MAXSIZE, 0x7, (nextseqnum % 256));
     mk_pkt(sendp, true, data + (num - 1) * MAXSIZE, len - (num - 1) * MAXSIZE, nextseqnum);
     snd_pkt(sendp);
@@ -431,14 +466,14 @@ void start(int len) {
             temp = fin.get();
         }
         fin.close();
-        long long head, tail, freq;
+        long long start, end, freq;
         send(server, server_addr, len, (char*)(myfile.c_str()), myfile.length());
         QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
-        QueryPerformanceCounter((LARGE_INTEGER*)&head);
+        QueryPerformanceCounter((LARGE_INTEGER*)&start);
         send(server, server_addr, len, buffer, i);
-        QueryPerformanceCounter((LARGE_INTEGER*)&tail);
-        cout << "传输总时间为: " << (tail - head) * 1.0 / freq << " s" << endl;
-        cout << "吞吐率为: " << ((double)i) / ((tail - head) * 1.0 / freq) << " byte/s" << endl;
+        QueryPerformanceCounter((LARGE_INTEGER*)&end);
+        cout << "传输总时间为: " << (end - start) * 1.0 / freq << " s" << endl;
+        cout << "吞吐率为: " << ((double)i) / ((end - start) * 1.0 / freq) << " byte/s" << endl;
 
     }
 }
