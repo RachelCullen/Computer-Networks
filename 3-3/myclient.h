@@ -40,7 +40,7 @@ public:
 const int MAXSIZE = 2048;
 SOCKADDR_IN server_addr;
 SOCKET server;
-double TIMEOUT = 0.5;
+double TIMEOUT =0.5;
 double INTERACT_TIME = 1.0;
 double cwnd = 1; //窗口大小
 double ssthreash = 16; //阈值
@@ -197,7 +197,7 @@ void init() {
     WSADATA wsadata;
     WSAStartup(MAKEWORD(2, 2), &wsadata);
     server_addr.sin_family = AF_INET;//使用IPV4
-    server_addr.sin_port = htons(4000);
+    server_addr.sin_port = htons(4001);
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     server = socket(AF_INET, SOCK_DGRAM, 0);
     //bind(server, (SOCKADDR*)&server_addr, sizeof(server_addr));//绑定套接字，进入监听状态
@@ -259,9 +259,9 @@ bool interact(SOCKET& sockServ, SOCKADDR_IN& ClientAddr, int& ClientAddrLen, str
 }
 //发送pkt并且打印pkt中header的信息
 void snd_pkt(Packet sendp) {
-    sendto(server, sendp.Buffer, sizeof(sendp.header)+sendp.header.datasize, 0, (sockaddr*)&server_addr, addrlen);//发送数据包
+    if(sendto(server, sendp.Buffer, sizeof(sendp.header)+sendp.header.datasize, 0, (sockaddr*)&server_addr, addrlen))//发送数据包
     //cout << "send " << sendp.header.datasize << " Byte：";
-    sendp.header.show_header();
+        sendp.header.show_header();
 }
 //把对应的Header和databuf写入pkt的buffer中，包括seq模256，计算好校验和等方法
 void mk_pkt(Packet& sendp, bool END, char* databuf, int datatsize,int seq) {
@@ -292,47 +292,54 @@ DWORD WINAPI thread_recv(LPVOID lparam) {
             memcpy(&recvh, buf, sizeof(recvh));
             //其他的ack全都忽略，只接收base相等的ack,
             //即new ack
-            if (recvh.flag == 1) {
-                if (recvh.ack >= base % 256 && (recvh.seq - base % 256 <= cwnd)) {
-                    //状态更新
-                    int temp = state_after_newack(curState);
-                    curState = temp;
-                    //确认了就是这个包，窗口挪动
-                    cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
-                    //recvh.show_header();
-                    base += recvh.ack - base % 256 + 1;
-                    curAcked += recvh.ack - base % 256 + 1;
-                    curAcked %= 256;
-                    if (base != nextseqnum)
-                        QueryPerformanceCounter((LARGE_INTEGER*)&head);
+            
+            if (recvh.ack >= base % 256 && (recvh.seq - base % 256 <= cwnd)) {
+                //状态更新
+                int temp = state_after_newack(curState);
+                curState = temp;
+                //确认了就是这个包，窗口挪动
+                cout << "[ACK ] packet seq:" << (int)recvh.ack  << endl;
+                //recvh.show_header();
+                base += recvh.ack - base % 256 + 1;
+                curAcked+= recvh.ack - base % 256 + 1;
+                curAcked %= 256;
+                if (base != nextseqnum)
+                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
 
-                }
-                else if (recvh.ack < cwnd && base % 256>255 - cwnd) {
-                    //状态更新
-                    int temp = state_after_newack(curState);
-                    curState = temp;
-                    //确认了就是这个包，窗口挪动
-                    cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
-                    base += recvh.seq + 256 - base % 256 + 1;
-                    curAcked += recvh.seq + 256 - base % 256 + 1;
-                    curAcked %= 256;
-                    if (base != nextseqnum)
-                        QueryPerformanceCounter((LARGE_INTEGER*)&head);
-                }
-                /*快重传阶段：发送方只要一连接收到三个重复确认就应该立即重传对方尚未接收的报文段，
-                而不必等到重传计时器超时后发送。
-                由3个重复应答判断有包丢失，重新发送丢包的信息。*/
-                else {
+            }
+            else if (recvh.ack < cwnd && base % 256>255 - cwnd) {
+                //状态更新
+                int temp = state_after_newack(curState);
+                curState = temp;
+                //确认了就是这个包，窗口挪动
+                cout << "[ACK ] packet seq:" << (int)recvh.ack << endl;
+                base += recvh.seq + 256 - base % 256 + 1;
+                curAcked += recvh.seq + 256 - base % 256 + 1;
+                curAcked %= 256;
+                if (base != nextseqnum)
+                    QueryPerformanceCounter((LARGE_INTEGER*)&head);
+            }
+            /*快重传阶段：发送方只要一连接收到三个重复确认就应该立即重传对方尚未接收的报文段，
+            而不必等到重传计时器超时后发送。
+            由3个重复应答判断有包丢失，重新发送丢包的信息。*/
+            else {//收到冗余ack
+                if (curState == SLOW_START || curState == CON_AVOID) {
                     dupACKcount++;
+
                     if (dupACKcount == 3) {
+                        curState = FAST_RE;
                         ssthreash = cwnd / 2;
                         cwnd = ssthreash + 3;
                         nextseqnum = base;//重传所有未确认的值
                         cout << "*************************dupACKcount = 3! resend from packet No.[" << base << "]*********************************" << endl;
-
+                        Sleep(2);
                     }
                 }
+                else {
+                    cwnd++;
+                }
             }
+            
 
         }
 
@@ -361,8 +368,7 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
     }
     cout << "packets:" << num << endl;
     Packet sendp;//这个包的seq是nextseqnum，是当前要发的
-    HANDLE sndThread,recvThread;
-    DWORD dwThreadId1,dwThreadId2;
+    QueryPerformanceCounter((LARGE_INTEGER*)&head);
     if (base < num - 1)
         CreateThread(NULL, NULL, &thread_recv, NULL, 0, NULL);
     //Sleep(20);
@@ -373,11 +379,15 @@ void send(SOCKET& clientsocket, SOCKADDR_IN& serveraddr, int& addrlen, char* dat
             cout << "[SEND][cwnd="<<(int)cwnd<<",ssthreash="<<(int)ssthreash<<"] packet No.[" << nextseqnum << "]: ";
             //printf("[SEND][cwnd=%d,ssthreash=%d] packet No.[%d]",cwnd,ssthreash,nextseqnum );
             snd_pkt(sendp);
+
             if (base == nextseqnum)
                 QueryPerformanceCounter((LARGE_INTEGER*)&head); 
+            if (curState != FAST_RE) {
             nextseqnum++;
+            }
 
         }
+        Sleep(2);
 
     }
 
