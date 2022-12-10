@@ -169,8 +169,8 @@ int receive(SOCKET& servsocket, SOCKADDR_IN& clientaddr, int& len, char* filedat
     int offset = 0;
     while (true) { //一直等待接收中
         int recvlen = recvfrom(servsocket, recvp.Buffer, sizeof(recvp.header) + MAXSIZE, 0, (sockaddr*)&clientaddr, &len);
-        //int drop = rand() % 10;
-        //if (drop == 1)
+        //int drop = rand() % 100;
+        //if (drop > 94)
         //    continue;
         if (recvlen) {//收到了东西
             memcpy(&recvp.header, recvp.Buffer, sizeof(recvp.header));
