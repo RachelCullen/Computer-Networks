@@ -1,6 +1,6 @@
 # computernetwork
 
 #### 介绍
-nku计网作业。
-要不是被ctrl+Z背刺了破大防也不会来用gitee。
-气死了
+Course: COSC0010 Computer Networks
+Professor: 徐敬东 张建忠
+Projects：Chat Room; Reliable UDP; Web Server;
